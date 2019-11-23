@@ -167,6 +167,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--use_attn_default', '-use_attn_default', type=int, default=1,
                             help="")
         parser.add_argument('--entmax', type=int, default=0, help='1 for sparsemax, 2 entmax15 3 entmax_bisect')
+        parser.add_argument('--distance',type=int, default=0)
         parser.add_argument('--non_global_attn', '-nga', type=int, default=0, help='layer of non global attention')
         parser.add_argument('--max_relative_positions', '-max_relative_positions', type=int, default=0,
                             help="Maximum distance between inputs in relative positions representations.  For more "
