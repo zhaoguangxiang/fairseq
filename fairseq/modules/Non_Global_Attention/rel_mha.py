@@ -18,7 +18,7 @@ class Rel_MHA(nn.Module):
     See "Attention Is All You Need" for more details.
     """
 
-    def __init__(self, embed_dim, num_heads, kdim=None, vdim=None, dropout=0., bias=True,
+    def __init__(self, embed_dim, num_heads, args=None, kdim=None, vdim=None, dropout=0., bias=True,
                  add_bias_kv=False, add_zero_attn=False, self_attention=False,
                  encoder_decoder_attention=False):
         super().__init__()
@@ -62,6 +62,20 @@ class Rel_MHA(nn.Module):
             self.enable_torch_version = True
         else:
             self.enable_torch_version = False
+        self.args = args
+        use_attn_default = args.use_attn_default if 'use_attn_default' in args else 1
+        if not use_attn_default:
+            self.enable_torch_version = False
+
+        # rel pos (1):
+        max_relative_positions = args.max_relative_positions if 'max_relative_positions' in args else 0
+        self.max_relative_positions = max_relative_positions
+        if max_relative_positions > 0:
+            vocab_size = max_relative_positions * 2 + 1
+            self.relative_positions_embeddings = nn.Embedding(
+                vocab_size, self.head_dim)
+
+        self.register_buffer('_float_tensor', torch.FloatTensor(1))
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
@@ -230,7 +244,27 @@ class Rel_MHA(nn.Module):
                 key_padding_mask = torch.cat(
                     [key_padding_mask, torch.zeros(key_padding_mask.size(0), 1).type_as(key_padding_mask)], dim=1)
 
-        attn_weights = torch.bmm(q, k.transpose(1, 2))
+        attn_weights = torch.bmm(q, k.transpose(1, 2))  # bsz * self.num_heads, q_len, k_len
+        key_len = attn_weights.size(2)
+
+        # rel pos (2) :
+        if self.max_relative_positions > 0 and not self.encoder_decoder_attention:
+            # batch_size, head_count,len,  dim_per_head
+            # 1 or key_len x key_len
+            relative_positions_matrix = generate_relative_positions_matrix(
+                key_len, self.max_relative_positions,
+                cache=True if incremental_state is not None else False)
+            #  1 or key_len x key_len x dim_per_head
+            relations_keys = self.relative_positions_embeddings(
+                relative_positions_matrix).to(self._float_tensor)
+            #  1 or key_len x key_len x dim_per_head
+            relations_values = self.relative_positions_embeddings(
+                relative_positions_matrix).to(self._float_tensor)
+        # if self.max_relative_positions > 0 and not self.encoder_decoder_attention:
+            # batch x num_heads x query_len x key_len
+            attn_weights = attn_weights + relative_matmul(q.contiguous().
+                                                          view(bsz, self.num_heads, tgt_len, self.head_dim), relations_keys, True).\
+                contiguous().view(bsz*self.num_heads, tgt_len, key_len)
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
@@ -265,6 +299,13 @@ class Rel_MHA(nn.Module):
             attn = attn.contiguous().view(tgt_len, bsz, embed_dim)
         else:
             attn = attn.transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+
+        # rel pos (3) :
+        if self.max_relative_positions > 0 and not self.encoder_decoder_attention:
+            #  attn: tgt_len, bsz, embed_dim
+            # attn_probs bsz * self.num_heads, tgt_len, src_len
+            attn = attn + relative_matmul(attn_probs.contiguous().view(bsz, self.num_heads, tgt_len, key_len), relations_values, False).contiguous().view(bsz*self.num_heads,tgt_len, self.head_dim).transpose(0, 1).contiguous().view(tgt_len, bsz, embed_dim)
+
         attn = self.out_proj(attn)
 
         if need_weights:
@@ -360,3 +401,38 @@ class Rel_MHA(nn.Module):
 
         for key, value in items_to_add.items():
             state_dict[key] = value
+
+
+def generate_relative_positions_matrix(length, max_relative_positions,
+                                       cache=False):
+    """Generate the clipped relative positions matrix
+       for a given length and maximum relative positions"""
+    if cache:
+        distance_mat = torch.arange(-length+1, 1, 1).unsqueeze(0)
+    else:
+        range_vec = torch.arange(length)
+        range_mat = range_vec.unsqueeze(-1).expand(-1, length).transpose(0, 1)
+        distance_mat = range_mat - range_mat.transpose(0, 1)
+    distance_mat_clipped = torch.clamp(distance_mat,
+                                       min=-max_relative_positions,
+                                       max=max_relative_positions)
+    # Shift values to be >= 0
+    final_mat = distance_mat_clipped + max_relative_positions
+    return final_mat
+
+
+def relative_matmul(x, z, transpose):
+    """Helper function for relative positions attention."""
+    batch_size = x.shape[0]
+    heads = x.shape[1]
+    length = x.shape[2]
+    x_t = x.permute(2, 0, 1, 3)
+    x_t_r = x_t.reshape(length, heads * batch_size, -1)
+    if transpose:
+        z_t = z.transpose(1, 2)
+        x_tz_matmul = torch.matmul(x_t_r, z_t)
+    else:
+        x_tz_matmul = torch.matmul(x_t_r, z)
+    x_tz_matmul_r = x_tz_matmul.reshape(length, batch_size, heads, -1)
+    x_tz_matmul_r_t = x_tz_matmul_r.permute(1, 2, 0, 3)
+    return x_tz_matmul_r_t
