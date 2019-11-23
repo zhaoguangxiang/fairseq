@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from fairseq import utils
 from fairseq.modules import LayerNorm, MultiheadAttention
 from .linear import Linear
-from .Non_Global_Attention.rel_mha import Rel_MHA
+from .Non_Global_Attention import Rel_MHA, DistMHA
 
 class TransformerNGAEncoderLayer(nn.Module):
     """Encoder layer block.
@@ -31,6 +31,9 @@ class TransformerNGAEncoderLayer(nn.Module):
         self.embed_dim = args.encoder_embed_dim
         if args.max_relative_positions > 0:
             self.self_attn = Rel_MHA(self.embed_dim, args.encoder_attention_heads, args=args,
+                                     dropout=args.attention_dropout, self_attention=True)
+        elif args.distance >0:
+            self.self_attn = DistMHA(self.embed_dim, args.encoder_attention_heads, args=args,
                                      dropout=args.attention_dropout, self_attention=True)
         else:
             self.self_attn = MultiheadAttention(
@@ -143,6 +146,16 @@ class TransformerNGADecoderLayer(nn.Module):
         self.cross_self_attention = getattr(args, 'cross_self_attention', False)
         if args.max_relative_positions > 0:
             self.self_attn = Rel_MHA(
+                embed_dim=self.embed_dim,
+                num_heads=args.decoder_attention_heads,
+                args=args,
+                dropout=args.attention_dropout,
+                add_bias_kv=add_bias_kv,
+                add_zero_attn=add_zero_attn,
+                self_attention=not self.cross_self_attention,
+            )
+        if args.distance > 0:
+            self.self_attn = DistMHA(
                 embed_dim=self.embed_dim,
                 num_heads=args.decoder_attention_heads,
                 args=args,
