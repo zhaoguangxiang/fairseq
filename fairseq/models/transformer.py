@@ -25,6 +25,7 @@ from fairseq.modules import (
     SinusoidalPositionalEmbedding,
     TransformerDecoderLayer,
     TransformerEncoderLayer,
+    Linear,
 )
 import random
 
@@ -151,6 +152,7 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--use_attn_default', '-use_attn_default', type=int, default=1,
                             help="")
         parser.add_argument('--entmax', type=int, default=0, help='1 for sparsemax, 2 entmax15 3 entmax_bisect')
+        parser.add_argument('--non_global_attn', '-nga', type=int, default=0, help='layer of non global attention')
         parser.add_argument('--max_relative_positions', '-max_relative_positions', type=int, default=0,
                             help="Maximum distance between inputs in relative positions representations.  For more "
                                  "detailed information, see: https://arxiv.org/pdf/1803.02155.pdf 8 is good")
@@ -767,12 +769,6 @@ def Embedding(num_embeddings, embedding_dim, padding_idx):
     return m
 
 
-def Linear(in_features, out_features, bias=True):
-    m = nn.Linear(in_features, out_features, bias)
-    nn.init.xavier_uniform_(m.weight)
-    if bias:
-        nn.init.constant_(m.bias, 0.)
-    return m
 
 
 @register_model_architecture('transformer', 'transformer')
