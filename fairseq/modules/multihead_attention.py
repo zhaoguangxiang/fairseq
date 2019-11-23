@@ -18,7 +18,7 @@ class MultiheadAttention(nn.Module):
     See "Attention Is All You Need" for more details.
     """
 
-    def __init__(self, embed_dim, num_heads, kdim=None, vdim=None, dropout=0., bias=True,
+    def __init__(self, embed_dim, num_heads, args=None, kdim=None, vdim=None, dropout=0., bias=True,
                  add_bias_kv=False, add_zero_attn=False, self_attention=False,
                  encoder_decoder_attention=False):
         super().__init__()
@@ -62,6 +62,11 @@ class MultiheadAttention(nn.Module):
             self.enable_torch_version = True
         else:
             self.enable_torch_version = False
+        self.args = args
+        use_attn_default = args.use_attn_default if 'use_attn_default' in args else 1
+        if not use_attn_default:
+            self.enable_torch_version = False
+        self.register_buffer('_float_tensor', torch.FloatTensor(1))
 
     def prepare_for_onnx_export_(self):
         self.onnx_trace = True
@@ -230,7 +235,8 @@ class MultiheadAttention(nn.Module):
                 key_padding_mask = torch.cat(
                     [key_padding_mask, torch.zeros(key_padding_mask.size(0), 1).type_as(key_padding_mask)], dim=1)
 
-        attn_weights = torch.bmm(q, k.transpose(1, 2))
+        attn_weights = torch.bmm(q, k.transpose(1, 2))  # bsz * self.num_heads, q_len, k_len
+        key_len = attn_weights.size(2)
         attn_weights = self.apply_sparse_mask(attn_weights, tgt_len, src_len, bsz)
 
         assert list(attn_weights.size()) == [bsz * self.num_heads, tgt_len, src_len]
