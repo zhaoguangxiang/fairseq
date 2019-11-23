@@ -29,7 +29,7 @@ from .transformer_sentence_encoder import TransformerSentenceEncoder
 from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
 from .vggblock import VGGBlock
-
+from .linear import Linear
 __all__ = [
     'AdaptiveInput',
     'AdaptiveSoftmax',
@@ -61,4 +61,5 @@ __all__ = [
     'TransformerEncoderLayer',
     'VGGBlock',
     'unfold1d',
+    'linear'
 ]

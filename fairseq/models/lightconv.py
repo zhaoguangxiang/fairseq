@@ -24,8 +24,8 @@ from fairseq.modules import (
     PositionalEmbedding,
     LightweightConv,
     MultiheadAttention,
+    Linear,
 )
-
 
 @register_model('lightconv')
 class LightConvModel(FairseqEncoderDecoderModel):
@@ -560,7 +560,7 @@ class LightConvDecoderLayer(nn.Module):
             self.encoder_attn_layer_norm = None
         else:
             self.encoder_attn = MultiheadAttention(
-                self.embed_dim, args.decoder_attention_heads,
+                self.embed_dim, args.decoder_attention_heads,args=args,
                 dropout=args.attention_dropout, encoder_decoder_attention=True
             )
             self.encoder_attn_layer_norm = LayerNorm(self.embed_dim)
@@ -654,12 +654,7 @@ def Embedding(num_embeddings, embedding_dim, padding_idx):
     return m
 
 
-def Linear(in_features, out_features, bias=True):
-    m = nn.Linear(in_features, out_features, bias)
-    nn.init.xavier_uniform_(m.weight)
-    if bias:
-        nn.init.constant_(m.bias, 0.)
-    return m
+
 
 
 @register_model_architecture('lightconv', 'lightconv')

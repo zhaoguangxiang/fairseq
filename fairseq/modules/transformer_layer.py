@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from fairseq import utils
 from fairseq.modules import LayerNorm, MultiheadAttention
-
+from .linear import Linear
 
 class TransformerEncoderLayer(nn.Module):
     """Encoder layer block.
@@ -304,10 +304,3 @@ class TransformerDecoderLayer(nn.Module):
     def make_generation_fast_(self, need_attn=False, **kwargs):
         self.need_attn = need_attn
 
-
-def Linear(in_features, out_features, bias=True):
-    m = nn.Linear(in_features, out_features, bias)
-    nn.init.xavier_uniform_(m.weight)
-    if bias:
-        nn.init.constant_(m.bias, 0.)
-    return m
