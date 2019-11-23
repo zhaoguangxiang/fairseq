@@ -161,6 +161,14 @@ class TransformerModel(FairseqEncoderDecoderModel):
                             help='add layernorm to embedding')
         parser.add_argument('--no-scale-embedding', action='store_true',
                             help='if True, dont scale embeddings')
+
+        # entmax
+        parser.add_argument('--use_attn_default', '-use_attn_default', type=int, default=1,
+                            help="")
+        parser.add_argument('--entmax', type=int, default=0, help='1 for sparsemax, 2 entmax15 3 entmax_bisect')
+        parser.add_argument('--max_relative_positions', '-max_relative_positions', type=int, default=0,
+                            help="Maximum distance between inputs in relative positions representations.  For more "
+                                 "detailed information, see: https://arxiv.org/pdf/1803.02155.pdf 8 is good")
         # fmt: on
 
     @classmethod
