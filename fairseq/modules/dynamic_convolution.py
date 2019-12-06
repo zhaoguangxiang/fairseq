@@ -170,7 +170,7 @@ class DynamicConv1dTBC(nn.Module):
         output = output.view(T, B, C)
         return output
 
-    def _forward_expanded(self, x, incremental_stat, query):
+    def _forward_expanded(self, x, incremental_state, query):
         '''Turn the convolution filters into band matrices and do matrix multiplication.
         This is faster when the sequence is short, but less memory efficient.
         This is not used in the decoder during inference.
