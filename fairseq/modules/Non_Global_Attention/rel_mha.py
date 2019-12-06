@@ -12,8 +12,9 @@ import torch.nn.functional as F
 from fairseq import utils
 
 
+# borrow relative position encoding from OpenNMT
 class Rel_MHA(nn.Module):
-    """Multi-headed attention.
+    """Multi-headed attention with relative position encoding.
 
     See "Attention Is All You Need" for more details.
     """

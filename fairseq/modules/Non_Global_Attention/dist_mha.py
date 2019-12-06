@@ -12,6 +12,7 @@ import torch.nn.functional as F
 from fairseq import utils
 
 
+# not implemented  because
 class DistMHA(nn.Module):
     """Multi-headed attention.
 
