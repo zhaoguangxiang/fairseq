@@ -28,6 +28,8 @@ from fairseq.modules import (
     Linear,
 )
 import random
+from .combine_transformer import TransformerCombineEncoder, TransformerCombineDecoder
+from .transformer_bm import TransformerBMEncoder, TransformerBMDecoder
 
 DEFAULT_MAX_SOURCE_POSITIONS = 1024
 DEFAULT_MAX_TARGET_POSITIONS = 1024
@@ -172,6 +174,252 @@ class TransformerModel(FairseqEncoderDecoderModel):
         parser.add_argument('--max_relative_positions', '-max_relative_positions', type=int, default=0,
                             help="Maximum distance between inputs in relative positions representations.  For more "
                                  "detailed information, see: https://arxiv.org/pdf/1803.02155.pdf 8 is good")
+        # qk dim  self attn
+        # parser.add_argument('--qk_dim', type=float, default=1, help='qk_dim*=dim')
+        # parser.add_argument('--qk_dropout', type=float, default=1, help='cand 0.5')
+        # parser.add_argument('--qk_same_rand', type=int, default=1)
+        # parser.add_argument('--qk_sort_rand', type=int, default=1) # seems no effect always true
+        # parser.add_argument('--qk_bagging', type=int, default=0)
+        # parser.add_argument('--bagging_type', type=int, default=0, help='0:mean,1:max')
+        parser.add_argument('--ds', type=int, default=0,help='dimension self attention cands 0 1')
+        parser.add_argument('--ds_ds', type=int, default=0, help='dimension self attention in decoder self attn cands 0 1 2')
+        parser.add_argument('--ds_dim', type=int, default=0, help='')
+        parser.add_argument('--ds_heads', type=int, default=1, help='')
+        parser.add_argument('--window_size', type=int, default=8)
+        parser.add_argument('--stride_rho', type=float, default=0, help='cand 0.5')
+        parser.add_argument('--window_padding', type=int, default=0, help='cands 0 1 0 half,1 sequential')
+        parser.add_argument('--dim_group_size', type=int, default=32, help='cand 16 32 64 ')
+        parser.add_argument('--ds_k', type=int, default=0, help='k max pooling along sequential positions for dimension self attention')
+
+        # eight path results bad than mha
+        parser.add_argument('--xt_attn', type=int,default=0,help='0 default, 1out of multi-head.  2 bypass xt  in multi head3 default xs in multi head')
+        parser.add_argument('--xt_attn_heads', type=int, default=4,
+                            help='')
+        parser.add_argument('--xt_in_attn_heads', type=int, default=1,
+                            help='')
+        parser.add_argument('--xt_merge', type=int, default=0,
+                            help='0: add,1:mean,2:attn,3 transpose,4transpose_linear')
+        parser.add_argument('--xt_relu1',type=int,default=0)
+        parser.add_argument('--xt_relu2', type=int, default=0)
+        # attempt relu or bypass fnn
+        parser.add_argument('--v_relu', type=int, default=0,
+                            help='')
+        parser.add_argument('--qk_relu', type=int, default=0,
+                            help='')
+        parser.add_argument('--att_relu', type=int, default=0,
+                            help='')
+        parser.add_argument('--bypass_ffn', type=int, default=0, help='currently only work for encoder 0 defaulf  '
+                                                                      '1bypass with mha 2 enc,dec 3 encoder vlinear and ffn variants')
+        parser.add_argument('--vl', default='linear',type=str, help='none,linear,ffn,hffn')
+        parser.add_argument('--ffn', default='ffn', type=str, help='none,linear,ffn')
+
+        # layer memory unused
+        parser.add_argument('--mem_q', type=bool, default=False, help='rnn,lstm,gru,dnc,dncr,rmc')
+        parser.add_argument('--memory_type', type=str, default='no', help='no,rnn,lstm,gru,dnc,dncr,rmc')
+        parser.add_argument('--memory_position', type=str, default='before', help='before,after')
+        parser.add_argument('--rnn_ratio', type=float,default=1, help='rnn_memory_size= rnn_ratio*emb_dim')
+        parser.add_argument('--rnn_init_type',type=str,default='zeros')
+        parser.add_argument('--rnn_integrate_type', type=str, default='add', help='add,concat_linear,update')
+        parser.add_argument('--rnn_integrate_attn', type=str, default='no', help= 'no, multi_head_attn, separate_multi_head_attn')
+        parser.add_argument('--m_rnn_head', type=int, default=8)
+
+        # rn in multi-head attn
+        parser.add_argument('--use_rn', type=int, default=0, help='')
+        parser.add_argument('--rn_dim', type=int, default=64, help='')
+        parser.add_argument('--g_fc_layers', type=int, default=3, help='')
+        parser.add_argument('--f_fc_layers', type=int, default=1, help='')
+        parser.add_argument('--g_ln', type=int, default=0, help='')
+        parser.add_argument('--f_ln', type=int, default=0, help='')
+        parser.add_argument('--rn_conv_k', type=int, default=3, help='')
+        parser.add_argument('--rn_conv_s', type=int, default=3, help='')
+        parser.add_argument('--share_conv', type=int, default=0, help='')
+        parser.add_argument('--rn_dropout', type=float, default=0, help='')
+        parser.add_argument('--rn_time', type=int, default=0, help='')
+        parser.add_argument('--rn_head', type=int,default=1,help='')
+
+        # # se
+        # parser.add_argument('--fc0_before', type=int, default=0)
+        # parser.add_argument('--fc0_relu', type=int, default=0)
+        # parser.add_argument('--fc0_ln_relu', type=int, default=0)
+        # parser.add_argument('--se_activation', type=str, default='none',
+        #                     help="none, sigmoid, softmax")
+        # parser.add_argument('--se_f', type=str, default='avg', help='avg,rn0,rn1,avg_rn0,avg_rn1')
+        parser.add_argument('--se_ratio', type=int, default=4, help='')
+        parser.add_argument('--use_se', type=int, default=0, help='')
+        parser.add_argument('--se_inner_ln', type=int, default=0)
+        parser.add_argument('--se_res', type=int, default=1)
+        parser.add_argument('--se_softmax_t', type=float, default=0)
+        parser.add_argument('--se_head', type=int, default=0)
+        parser.add_argument('--se_head_type', type=int, default=0)
+        parser.add_argument('--se_position', type=int, default=0, help='0 inter block, 1 after fc,2- inner block,3 decoder inter block,4- all inner  encoder block')
+        parser.add_argument('--se_softmax_group',type=int, default=0,help='4')
+        parser.add_argument('--se_vl', type=int, default=0, help=' se net with bypass value linear, 1 bleus bad ')
+        # added in 9/10 for SEScores in cmb exp
+        parser.add_argument('--se_activation', type=str, default='none',
+                            help="none, sigmoid, softmax")
+        parser.add_argument('--se_list',type=str, nargs='+',
+                            default=[],
+                            help="'ffn', 'self_mha' , 'context_mha' 'cmb'")
+        parser.add_argument('--se_para',type=int,default=0)
+        parser.add_argument('--se_on_x',type=int,default=0, help='0 on ouput 1 onx ')
+        parser.add_argument('--se_scale', type=float, default=1, help='enlarge the se output if it is too small')
+        parser.add_argument('--se_avg_type', type=int, default=0, help='0-avg,1-attn,2-avg_time,3-attn_simply,4-no_avg')
+        parser.add_argument('--se_nonlinear', type=int, default=0)
+        parser.add_argument('--se_add', type=int, default=0)
+        # parser.add_argument('--se_cmb',type=int,default=0)
+
+        # init and layer norm variations
+        parser.add_argument('--init_method', type=str, default='xavier',
+                            help='xavier,km，xi')
+        # add init scale
+
+        parser.add_argument('--qkv_a', type=float, default=5, )
+        parser.add_argument('--attn_a', type=float, default=1, )
+        parser.add_argument('--fc1_a', type=float, default=5, )
+        parser.add_argument('--fc2_a', type=float, default=5, )
+
+        # adanorm
+        parser.add_argument('--lnv', type=str, default='origin', help='origin, no_norm, topk, adanorm,nowb')
+        parser.add_argument('--sigma', type=float, default=0.005,)
+        parser.add_argument('--adanorm_scale', type=float, default=2.0, help='')
+        parser.add_argument('--nowb_scale', type=float, default=1.0, help='')
+        parser.add_argument('--mean_detach', type=int, default=0, help='')
+        parser.add_argument('--std_detach', type=int, default=0, help='')
+
+        #  special attn select
+        parser.add_argument('--use_att', type=str, nargs='+',
+                            default=['es', 'ds', 'dc', ],
+                            help='which attn  do we apply rn or se or sp to ')
+        # sparse transformer
+        parser.add_argument('--div', type=int, default=0,
+                            help='control the attention sparsity')
+        parser.add_argument('--lb', type=int, default=0,
+                            help='the lower bound of the attention sparsity')
+
+        # combine information in transformer model
+        parser.add_argument('--combine', type=int, default=0, help='0 as usual  1 combine residual')
+        parser.add_argument('--combine_linear',type=int,default=0,help='combine multi head attn and ffn by dense added in 8/17')
+        parser.add_argument('--cmb_gate', type=int, default=0, help='0:no gate | 1 gate dim | 2 gate scalar 3 dim parameter ')
+        parser.add_argument('--cmb_gate_nonlinear',type=int, default=0)
+        parser.add_argument('--cmb_gate_avgpos',type=int,default=0)
+        parser.add_argument('--info_linear', type=int, default=0,
+                            help='extract info from ffn and multi head attn')
+        parser.add_argument('--il_relu',type=int,default=0,help='0,nothing,1 relu 2 leaky relu 3 tanh')
+        parser.add_argument('--il_relu_linear', type=int, default=0)
+        parser.add_argument('--il_2act', type=int, default=0, help='0 nothing 1 relu 3 tanh')
+        parser.add_argument('--il_ratio', type=float, default=0)
+        parser.add_argument('--enc_il_inc', type=int,default=0,help='only for encoder')
+        parser.add_argument('--dec_info_linear',type=int,default=0)
+        parser.add_argument('--dec_il_list', type=str, nargs='+',
+                            default=['self_mha', 'context_mha', 'ffn'],
+                            help="['residual', 'self_mha', 'context_mha', 'ffn']")
+        parser.add_argument('--enc_il_dropout', type=float, default=0)
+        parser.add_argument('--dec_il_dropout', type=float, default=0)
+        parser.add_argument('--reslayer', type=str, default='combine',help='combine,dense1,cache,cache_linear1 3*4,cache_linear2 4*3')
+        parser.add_argument('--cache_block_valia_attn',type=int,default=0,help='added in 9.1 ,if true, cmb enc does not include ffn ')
+        parser.add_argument('--ffn_nr', type=int, default=0, help='ffn no residual,exp on the regular transformer')
+        # parser.add_argument('--encr',type=int, default=0,help='if use enc ratio')
+        # parser.add_argument('--decr', type=int, default=0, help='if use dec ratio')
+
+        parser.add_argument('--enc_ratio',type=float, default=0, help='0.5 means x+=0.5*x1 + 0.5 *x2')
+        parser.add_argument('--dec_ratio',type=float, default=0, help='0.5 means x+=0.5*(x1+x2+x3);>1 x = (self.'
+                                                                     'dec_ratio- 1 ) * (residual + x1 + x2 + x3),>2 ode')
+        parser.add_argument('--attn_ratio', type=float, default=1)
+
+        # reslayer = mix_conv
+        parser.add_argument('--kernel_size', type=int, default=0, help='for dynamic in ffn or conv, 0 to use depth kernels')
+        parser.add_argument('--attn_dynamic_type', type=int, default=0,
+                            help='0: no use,1 use static kernel(k>0) or depth kernel(k==0) 2. use  wide kernel ')
+        parser.add_argument('--attn_cat_relu',type=int,default=0)
+        parser.add_argument('--attn_wide_kernels', type=lambda x: options.eval_str_list(x, int),
+                            help='list of kernel size (default: "[3,9]") for wide and gate')
+        parser.add_argument('--weight-dropout', type=float, metavar='D',
+                            help='dropout probability for conv weights')
+        parser.add_argument('--dynamic_gate',type=int,default=0,help='0,1')
+        parser.add_argument('--dynamic_depth_kernels', type=lambda x: options.eval_str_list(x, int),
+                            help='list of kernel size (default: "[3,3,3,7,7,7,7,7,7,15,15,15]"),for ffn or attn')
+        parser.add_argument('--dynamic_padding', type=int, default=0, help='padding before dynamic conv')
+        parser.add_argument('--attn_dynamic_cat', type=int, default=0)
+        parser.add_argument('--attn_dynamic_indie_v', type=int, default=0,help='whether  there is indepent v for dynamic')
+        parser.add_argument('--attn1', type=str, default='origin', help='origin,mha,')
+        parser.add_argument('--attn2', type=str, default='none', help='origin,none')
+        parser.add_argument('--conv2', type=str, default='ffn', help='none,fc,hffn,ffn, biggerffn, 2ffn,ffn_ln,ffn_tanh,'
+                                                                     'ffn_relutanh,conv,conv_after,dynamic_conv,add_dynamic_conv')
+        parser.add_argument('--conv3', type=str, default='none', help='none,ffn')
+        # ffn like dynamic conv
+        parser.add_argument('--dynamic_inner_dim_ratio',type=int, default=2)
+        parser.add_argument('--dc_relu', type=int, default=0, help='for use in dynamic conv')
+        parser.add_argument('--dcb_relu',type=int,default=0, help='relu before dynamic')
+        parser.add_argument('--mha_act', type=str, default='none',help='none,relu,tanh')
+        parser.add_argument('--mha_2fc', type=int, default=0,help='0:nothing 1:another fc')
+        parser.add_argument('--enc_tanh_list', type=str, nargs='+',
+                            default=[],
+                            help=" ['self_mha', 'ffn']")
+        parser.add_argument('--dec_tanh_list',type=str, nargs='+',
+                            default=[],
+                            help=" ['self_mha', 'context_mha', 'ffn']")
+        parser.add_argument('--dec_nffn',type=int,default=0,help='no ffn in decoder ,to demonstate the importance for tanh in remedy ffn')
+
+        parser.add_argument('--sep_out_proj', type=int, default=0, help='sep_out_proj for dynamic and attn')
+        parser.add_argument('--gate_inc_attn', type=int, default=0, help=' whether include attention for gate multiply in the. 2019/9/20 ')
+        parser.add_argument('--gate_before_proj',type=int, default=0)
+
+        # reduction
+        parser.add_argument('--reduction_ffn_mode', type=int, default=0, help='0 concat fc; 1 concat fc act fc ; 2 fc act concat fc')
+        parser.add_argument('--dense_activate', type=int, default=0, help='0:no act,1 relu 2 tanh, added in 9.1  used for one or two step reduction')
+        parser.add_argument('--dense_dropout', type=float, default=0,)
+        parser.add_argument('--cd_dropout', type=float, default=0,help='for caches out')
+
+        parser.add_argument('--cache_residual', type=int,default=0,help=' whether to pass residual across cache')
+        parser.add_argument('--inc_cur', type=int, default=0)
+        parser.add_argument('--reduction_mode', type=str, default='linear', help='linear, attn,rnn')
+        parser.add_argument('--cmb_mode', type=str, default='add', help='concat_linear, add')
+        parser.add_argument('--layer_mha_dim', type=int, default=512, help=' hidden model dim in layer mha')
+        parser.add_argument('--layer_mha_head', type=int, default=1)
+        parser.add_argument('--layer_memory_size', type=int, default=512)
+        parser.add_argument('--reduction_rnn', type=str, default='gru', help='rnn,gru,lstm')
+
+        # combine or divide  步子迈太大了
+        parser.add_argument('--cmb_2hffn', type=int, default=0)
+        parser.add_argument('--linear_divide', type=int, default=0)
+
+        parser.add_argument('--cache_size',type=int,default=3)
+        parser.add_argument('--caches_dense', type=int, default=0,help='把每个大cache的结果总结起来')
+        parser.add_argument('--caches_cat', type=int, default=0)
+        parser.add_argument('--cache_norms', type=int, default=0)
+
+        parser.add_argument('--init_topk_rho', type=float, default=0)
+        parser.add_argument('--big_km', type=int, default=0)
+        parser.add_argument('--big_km_list', type=str, nargs='+',
+                            default=['in', 'out', 'fc1', 'fc2', 'qkv', 'attn_out'],
+                            help='')
+        # for version control
+        parser.add_argument('--layer_version', type=str, default='820', help='default,...')
+        parser.add_argument('--k_sampling', type=int,default=0, help='added in 0:13 24/8 2019 for aggregation features in k different ways')
+
+        # for big matrix cmba
+        parser.add_argument('--bm', type=int, default=0, help='whether to use transformer_bm')
+        parser.add_argument('--bm_in_a', type=float, default=5, help='sqrt(6/(1+a)),-1 for xavier')
+        parser.add_argument('--bm_out_a', type=float, default=5, help='sqrt(6/(1+a)), -1 for xavier')
+        parser.add_argument('--bm_fc3', type=float, default=0, help='')  # 虚惊一场
+        parser.add_argument('--bm_fc4', type=float, default=0, help='')
+        parser.add_argument('--bm_norm', type=int, default=0)  # 0 no norm 1 layer norm
+        parser.add_argument('--bm_ffn_norm', type=int, default=0)  # 这个不建议调
+        # parser.add_argument('--bm_prenorm',type=int,default=0)
+
+        # for bagging in bm
+        parser.add_argument('--qk_bagging', type=int,default=0,help='0 nothing,1 max,2 mean')
+        parser.add_argument('--qk_dropout', type=float, default=0, help='')
+        parser.add_argument('--qk_big', type=int, default=1, help='1,2,4')
+        parser.add_argument('--bagging_num', type=int, default=1, help='')
+
+        # glu for conv in both for bm and cmba
+        parser.add_argument('--conv_in_glu', type=int, default=0, help='0 nothing, 1 for conv in only 2 for attn and conv both') # 觉得conv 和attn 必须在同一空间
+
+        parser.add_argument('--input_dropout', type=float, default=0, help='')
+
+        # entmax
+        # parser.add_argument('--entmax', type=int, default=0, help='1 for sparsemax, 2 entmax15 3 entmax_bisect')
         # fmt: on
 
     @classmethod
@@ -225,8 +473,15 @@ class TransformerModel(FairseqEncoderDecoderModel):
                 tgt_dict, args.decoder_embed_dim, args.decoder_embed_path
             )
 
-        encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
-        decoder = cls.build_decoder(args, tgt_dict, decoder_embed_tokens)
+        if args.combine:
+            encoder = TransformerCombineEncoder(args, src_dict, encoder_embed_tokens)
+            decoder = TransformerCombineDecoder(args, tgt_dict, decoder_embed_tokens)
+        elif args.bm:
+            encoder = TransformerBMEncoder(args, src_dict, encoder_embed_tokens)
+            decoder = TransformerBMDecoder(args, tgt_dict, decoder_embed_tokens)
+        else:
+            encoder = cls.build_encoder(args, src_dict, encoder_embed_tokens)
+            decoder = cls.build_encoder(args, tgt_dict, decoder_embed_tokens)
         return cls(args, encoder, decoder)
 
     @classmethod

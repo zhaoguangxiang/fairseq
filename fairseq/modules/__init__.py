@@ -30,6 +30,7 @@ from .unfold import unfold1d
 from .transformer_layer import TransformerDecoderLayer, TransformerEncoderLayer
 from .vggblock import VGGBlock
 from .linear import Linear
+from .multihead_attention import  MultiheadAttention820
 __all__ = [
     'AdaptiveInput',
     'AdaptiveSoftmax',
@@ -61,5 +62,6 @@ __all__ = [
     'TransformerEncoderLayer',
     'VGGBlock',
     'unfold1d',
-    'linear'
+    'linear',
+    'MultiheadAttention820'
 ]
